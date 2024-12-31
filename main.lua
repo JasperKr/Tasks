@@ -114,3 +114,7 @@ end, function(result)
         love.graphics.draw(result)
     end
 end)
+
+function love.quit()
+    Task.Shutdown()
+end

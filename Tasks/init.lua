@@ -12,6 +12,12 @@ local newObjectIndexedTable = require(path .. ".tables").newObjectIndexedTable
 
 local task = {}
 
+local verificationEnabled = false
+
+function task.enableVerification(enable)
+    verificationEnabled = enable
+end
+
 local threading = {}
 threading.threads = {}
 threading.send = love.thread.newChannel()
@@ -52,10 +58,30 @@ local filesChecked = {}
 
 local wrappedFunctions = newObjectIndexedTable()
 
+local function verifyData(path, data)
+    if type(data) == "table" then
+        for key, value in pairs(data) do
+            verifyData(path .. "." .. key, value)
+        end
+    elseif type(data) == "function" then
+        error("Function in data: " .. path)
+    elseif type(data) == "cdata" then
+        error("Cdata in data: " .. path)
+    elseif type(data) == "userdata" then
+        if not data:typeOf("Data") then
+            error("Userdata in data: " .. path)
+        end
+    end
+end
+
 --- queues a command to be ran by the threads
 ---@param command table the command to run
 ---@param group taskGroup the group the command is in
 local function sendCommand(command, group)
+    if verificationEnabled then
+        verifyData("command", command.data.data)
+    end
+
     task.threading.send:push(command)
 
     group.amountRunning = group.amountRunning + 1
@@ -318,8 +344,6 @@ function task.runTasks()
 end
 
 function task.Shutdown()
-    -- send quit message to all threads
-
     -- clear the channels
     task.threading.receiveHasQuit:clear()
     task.threading.send:clear()
@@ -329,12 +353,9 @@ function task.Shutdown()
         task.threading.send:push("quit")
     end
 
-    local maxWaitTime = 5.0
-    local waitTime = maxWaitTime / processorCount
-
     -- wait for all threads to quit
     for i = 1, processorCount do
-        task.threading.receiveHasQuit:demand(waitTime)
+        task.threading.threads[i].thread:wait()
     end
 end
 
@@ -401,9 +422,43 @@ function task.barrier(func, ...)
     end
 end
 
+function task.yield(condition)
+    if condition ~= false then -- explicitly check for not false, nil should be allowed
+        coroutine.yield()
+    end
+end
+
+function task.demand(...)
+    local running = true
+    while running do
+        running = false
+
+        task.runTasks()
+
+        for i = 1, select("#", ...) do
+            local data = select(i, ...)
+            if data.type == "task" then
+                ---@cast data task
+
+                while task.taskStatus(data) ~= "done" do
+                    running = true
+                end
+            elseif data.type == "Task group" then
+                ---@cast data taskGroup
+
+                while task.groupStatus(data) ~= "done" do
+                    running = true
+                end
+            else
+                error("Invalid parameter")
+            end
+        end
+    end
+end
+
 local wrappedFunctionsMetatable = {}
 
----@class Rhodium.wrappedAsyncFunction
+---@class wrappedAsyncFunction
 ---@field func function
 ---@field doneCallback function
 ---@field busyCallback function
@@ -450,9 +505,13 @@ end
 ---@param doneCallback function? the callback to call when the function is done
 ---@param busyCallback function? the callback to call every frame while the function is running
 ---@vararg any extra arguments to pass to the function
----@return Rhodium.wrappedAsyncFunction?
+---@return wrappedAsyncFunction?
 function task.wrapAsyncFunction(func, doneCallback, busyCallback, ...)
     local routine = coroutine.create(func)
+
+    assert(type(func) == "function", "Function is not a function")
+    assert(type(doneCallback) == "function" or doneCallback == nil, "Done callback is not a function")
+    assert(type(busyCallback) == "function" or busyCallback == nil, "Busy callback is not a function")
 
     local self = {
         func = func,
@@ -472,6 +531,53 @@ end
 function wrappedFunctionsFunctions:update(...)
     assert(self.routine, "Routine is nil")
     updateWrappedFunction(self, coroutine.resume(self.routine, ...))
+end
+
+function task.getThreadCount()
+    return #task.threading.threads
+end
+
+local data = {}
+
+for i, thread in ipairs(task.threading.threads) do
+    data[i] = {
+        active = false
+    }
+end
+
+local info = setmetatable({}, {
+    __index = data,
+    __newindex = function()
+        error("Attempt to modify a readonly table", 2)
+    end,
+})
+
+function task.getInfo()
+    for i, thread in ipairs(task.threading.threads) do
+        data[i].active = thread.activeChannel:peek()
+    end
+
+    return info
+end
+
+function task.getActiveThreadCount()
+    local count = 0
+
+    for i, thread in ipairs(task.threading.threads) do
+        if thread.activeChannel:peek() then
+            count = count + 1
+        end
+    end
+
+    return count
+end
+
+function task.getWrappedFunctionsCount()
+    return #wrappedFunctions.items
+end
+
+function task.getQueuedTaskCount()
+    return task.threading.send:getCount()
 end
 
 return task
