@@ -44,14 +44,14 @@ The same as `newTask` but will reset the task group. So it will run in parallel 
 
 #### `Task.taskStatus(task: task): string`
 Returns the status of the task.
-#####` Possible values:`
+#### Possible values:
 - `"running"`: The task is running.
 - `"done"`: The task is done.
 - `"queued"`: The task is queued.
 
 #### `Task.groupStatus(group: taskGroup): string`
 Returns the status of the task group.
-#####` Possible values:`
+#### Possible values:
 - `"running"`: The task group is running.
 - `"done"`: The task group is done.
 - `"queued"`: Not all tasks in the group are done running.
