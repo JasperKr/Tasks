@@ -13,11 +13,11 @@ function love.update(dt)
     Task.runTasks()
 end
 
-Task.wrapAsyncFunction(function()
-    local thread = Task.newTaskThread [[
-        print(...)
-    ]]
+local thread = Task.newTaskThread [[
+    print(...)
+]]
 
+Task.wrapAsyncFunction(function()
     for i = 1, 10 do
         Task.newSyncedTask(thread, { "Hello, world", i })
     end
@@ -30,7 +30,7 @@ end
 This works because `wrapAsyncFunction` will run the function as soon as you call it, but it isn't strictly needed in this case, since we don't have any blocking code.
 
 ## API
-#### `Task.newTaskThread(script: string, isPath: boolean): `thread
+#### `Task.newTaskThread(script: string, isPath: boolean): thread`
 Creates a new task thread with the given script, or file path.
 
 #### `Task.newTask(thread: thread, args: table, callback: function): task`
