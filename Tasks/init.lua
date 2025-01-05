@@ -355,7 +355,7 @@ function task.Shutdown()
 
     -- wait for all threads to quit
     for i = 1, processorCount do
-        task.threading.threads[i].thread:wait()
+        task.threading.threads[i]:wait()
     end
 end
 
